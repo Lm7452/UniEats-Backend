@@ -91,7 +91,7 @@ app.get('/login',
 );
 
 // This is the "Redirect URI" you configured in Azure. Microsoft sends the user back here after they log in.
-app.get('/auth/openid/return',
+app.post('/auth/openid/return',
   passport.authenticate('azuread-openidconnect', { failureRedirect: '/login-failed' }),
   (req, res) => {
     // Authentication was successful. Redirect to the FRONTEND dashboard.
