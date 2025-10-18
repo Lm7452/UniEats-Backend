@@ -94,6 +94,7 @@ app.get('/login',
 app.post('/auth/openid/return',
   passport.authenticate('azuread-openidconnect', { failureRedirect: '/login-failed' }),
   (req, res) => {
+    console.log(`--- SUCCESS! Redirecting to: ${process.env.FRONTEND_URL}/dashboard ---`);
     // Authentication was successful. Redirect to the FRONTEND dashboard.
     res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
   }
