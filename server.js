@@ -90,7 +90,7 @@ app.get('/auth/openid/return',
   passport.authenticate('azuread-openidconnect', { failureRedirect: '/login-failed' }),
   (req, res) => {
     // Authentication was successful. Redirect to the FRONTEND dashboard.
-    res.redirect('http://localhost:3000/dashboard'); 
+    es.redirect(`${process.env.FRONTEND_URL}/dashboard`);
   }
 );
 
@@ -130,3 +130,4 @@ app.listen(PORT, () => {
   console.log(`Server is listening on port ${PORT}`);
 
 });
+
