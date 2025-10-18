@@ -7,6 +7,7 @@ const session = require('express-session');
 const bodyParser = require('body-parser');
 const OIDCStrategy = require('passport-azure-ad').OIDCStrategy;
 const connectDB = require('./db');
+const cors = require('cors');
 
 // --- 1. INITIAL SETUP ---
 // Load environment variables from .env file FIRST
@@ -33,6 +34,10 @@ app.use(session({
 // Initialize Passport and have it use the session
 app.use(passport.initialize());
 app.use(passport.session());
+app.use(cors({
+    origin: process.env.FRONTEND_URL,
+    credentials: true
+}));
 
 
 // --- 3. PASSPORT STRATEGY CONFIGURATION ---
@@ -90,7 +95,7 @@ app.get('/auth/openid/return',
   passport.authenticate('azuread-openidconnect', { failureRedirect: '/login-failed' }),
   (req, res) => {
     // Authentication was successful. Redirect to the FRONTEND dashboard.
-    es.redirect(`${process.env.FRONTEND_URL}/dashboard`);
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
   }
 );
 
