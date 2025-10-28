@@ -160,6 +160,26 @@ app.get('/profile', (req, res) => {
     }
 });
 
+app.get('/api/user', (req, res) => {
+  if (req.isAuthenticated()) {
+    // Return user data from the session
+    res.json({
+      success: true,
+      user: {
+        id: req.user.id,
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role
+      }
+    });
+  } else {
+    res.status(401).json({
+      success: false,
+      message: 'Not authenticated'
+    });
+  }
+});
+
 // A route to handle login failures
 app.get('/login-failed', (req, res) => {
   res.status(401).send('<h1>Login Failed</h1><p>There was an error authenticating. Please check your terminal logs and Azure configuration.</p><a href="/">Home</a>');
