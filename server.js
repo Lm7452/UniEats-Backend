@@ -155,13 +155,6 @@ app.get('/logout', (req, res, next) => {
 app.get('/profile', (req, res) => {
     if (req.isAuthenticated()) { // isAuthenticated() is a Passport function
         res.send(`<h1>Hello!</h1><p>You are logged in.</p><a href="/logout">Logout</a>`);
-        res.json({
-          id: req.user.id,
-          name: req.user.name,
-          email: req.user.email,
-          role: req.user.role,
-          // Note: We don't have a profile picture URL stored yet
-        });
     } else {
         res.redirect('/login-failed');
     }
