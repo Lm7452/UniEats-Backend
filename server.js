@@ -23,9 +23,15 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Session middleware - required for Passport to maintain a login session
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'a-default-secret-for-dev', // Best practice: use an environment variable
+  secret: process.env.SESSION_SECRET || 'a-default-secret-for-dev',
   resave: false,
-  saveUninitialized: true,
+  saveUninitialized: false, // Changed to false - don't save empty sessions
+  cookie: {
+    secure: process.env.NODE_ENV === 'production', // true in production (HTTPS), false in dev
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' // 'none' for cross-origin in production
+  }
 }));
 
 // Initialize Passport and have it use the session
@@ -140,6 +146,16 @@ app.post('/auth/openid/return',
     res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
   }
 );
+
+// Add this to your server.js routes section
+app.get('/test-session', (req, res) => {
+  res.json({
+    isAuthenticated: req.isAuthenticated(),
+    session: req.session,
+    user: req.user,
+    cookies: req.headers.cookie
+  });
+});
 
 // This route ends the login session
 app.get('/logout', (req, res, next) => {
