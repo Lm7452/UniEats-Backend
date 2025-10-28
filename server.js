@@ -127,10 +127,12 @@ passport.deserializeUser(async (id, done) => {
 
 
 function ensureAuthenticated(req, res, next) {
+  console.log('API Request - Session ID:', req.sessionID); // Log session ID
+  console.log('API Request - Is Authenticated:', req.isAuthenticated()); // Log auth status
+  console.log('API Request - User in session:', req.user); // Log user object if available
   if (req.isAuthenticated()) {
     return next();
   }
-  // If not authenticated, send an unauthorized status
   res.status(401).json({ error: 'User not authenticated' });
 }
 
