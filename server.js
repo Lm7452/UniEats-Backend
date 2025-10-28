@@ -161,9 +161,14 @@ app.get('/profile', (req, res) => {
 });
 
 app.get('/api/user', (req, res) => {
+  console.log('--- /api/user endpoint hit ---');
+  console.log('Is authenticated:', req.isAuthenticated());
+  console.log('Session:', req.session);
+  console.log('User:', req.user);
+  
   if (req.isAuthenticated()) {
     // Return user data from the session
-    res.json({
+    const userData = {
       success: true,
       user: {
         id: req.user.id,
@@ -171,8 +176,11 @@ app.get('/api/user', (req, res) => {
         email: req.user.email,
         role: req.user.role
       }
-    });
+    };
+    console.log('Sending user data:', userData);
+    res.json(userData);
   } else {
+    console.log('User not authenticated, sending 401');
     res.status(401).json({
       success: false,
       message: 'Not authenticated'
