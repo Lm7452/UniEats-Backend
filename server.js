@@ -125,13 +125,6 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
-function ensureAuthenticated(req, res, next) {
-  if (req.isAuthenticated()) {
-    return next();
-  }
-  res.status(401).json({ error: 'User not authenticated' });
-}
-
 // --- 4. ROUTES ---
 // This route starts the login process
 app.get('/login',
@@ -165,20 +158,6 @@ app.get('/profile', (req, res) => {
     } else {
         res.redirect('/login-failed');
     }
-});
-
-app.get('/api/profile', ensureAuthenticated, (req, res) => {
-  // req.user is populated by passport.deserializeUser with data from your DB
-  if (req.user) {
-    res.json({
-      id: req.user.id,
-      name: req.user.name,
-      email: req.user.email,
-      role: req.user.role,
-    });
-  } else {
-    res.status(404).json({ error: 'User not found in session' });
-  }
 });
 
 // A route to handle login failures
