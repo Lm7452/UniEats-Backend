@@ -23,15 +23,9 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Session middleware - required for Passport to maintain a login session
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'a-default-secret-for-dev',
+  secret: process.env.SESSION_SECRET || 'a-default-secret-for-dev', // Best practice: use an environment variable
   resave: false,
-  saveUninitialized: false, // Changed to false - don't save empty sessions
-  cookie: {
-    secure: process.env.NODE_ENV === 'production', // true in production (HTTPS), false in dev
-    httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' // 'none' for cross-origin in production
-  }
+  saveUninitialized: true,
 }));
 
 // Initialize Passport and have it use the session
@@ -147,16 +141,6 @@ app.post('/auth/openid/return',
   }
 );
 
-// Add this to your server.js routes section
-app.get('/test-session', (req, res) => {
-  res.json({
-    isAuthenticated: req.isAuthenticated(),
-    session: req.session,
-    user: req.user,
-    cookies: req.headers.cookie
-  });
-});
-
 // This route ends the login session
 app.get('/logout', (req, res, next) => {
   req.logout(function(err) {
@@ -174,34 +158,6 @@ app.get('/profile', (req, res) => {
     } else {
         res.redirect('/login-failed');
     }
-});
-
-app.get('/api/user', (req, res) => {
-  console.log('--- /api/user endpoint hit ---');
-  console.log('Is authenticated:', req.isAuthenticated());
-  console.log('Session:', req.session);
-  console.log('User:', req.user);
-  
-  if (req.isAuthenticated()) {
-    // Return user data from the session
-    const userData = {
-      success: true,
-      user: {
-        id: req.user.id,
-        name: req.user.name,
-        email: req.user.email,
-        role: req.user.role
-      }
-    };
-    console.log('Sending user data:', userData);
-    res.json(userData);
-  } else {
-    console.log('User not authenticated, sending 401');
-    res.status(401).json({
-      success: false,
-      message: 'Not authenticated'
-    });
-  }
 });
 
 // A route to handle login failures
