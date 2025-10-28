@@ -6,15 +6,12 @@ const passport = require('passport');
 const session = require('express-session');
 const bodyParser = require('body-parser');
 const OIDCStrategy = require('passport-azure-ad').OIDCStrategy;
-const connectDB = require('./db');
 const cors = require('cors');
+const db = require('./db'); // Add this line
 
 // --- 1. INITIAL SETUP ---
 // Load environment variables from .env file FIRST
 dotenv.config();
-
-// Connect to the database (Temporarily disabled for auth testing)
-// connectDB();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -62,26 +59,70 @@ console.log(oidcConfig);
 
 // Define the OIDC strategy
 passport.use(new OIDCStrategy(oidcConfig,
-  (iss, sub, profile, done) => {
-    // --- DEBUG LOGS ---
+  async (iss, sub, profile, done) => { // Make the function async
     console.log('--- OIDC CALLBACK TRIGGERED ---');
     console.log('Authentication with Microsoft was successful.');
-    console.log('Received Profile:', profile);
-    // --- END DEBUG LINES ---
+    // Use profile.oid as the unique identifier from Azure AD
+    const azureOid = profile.oid;
+    // Extract email and name - adjust property names based on your actual profile object logging
+    const email = profile.upn || profile._json?.email || profile.emails?.[0]?.value;
+    const name = profile.displayName || 'UniEats User';
 
-    // In the future, you will find or create a user in your database here.
-    // For now, we just pass the raw profile to the next step.
-    return done(null, profile);
+    if (!azureOid || !email) {
+       console.error('Azure profile object missing oid or email:', profile);
+       return done(new Error('Authentication profile is missing required identifiers.'), null);
+    }
+
+    try {
+      // Check if user exists
+      let userResult = await db.query('SELECT * FROM users WHERE azure_oid = $1', [azureOid]);
+      let user = userResult.rows[0];
+
+      if (!user) {
+        // User not found, create a new one
+        console.log(`User not found with OID ${azureOid}, creating new user...`);
+        const insertResult = await db.query(
+          'INSERT INTO users (azure_oid, email, name) VALUES ($1, $2, $3) RETURNING *',
+          [azureOid, email, name]
+        );
+        user = insertResult.rows[0];
+        console.log('New user created:', user);
+      } else {
+        console.log('Existing user found:', user);
+        // Optional: Update user info if it changed in Azure AD (e.g., name)
+        if (user.name !== name || user.email !== email) {
+           console.log('Updating user information...');
+           const updateResult = await db.query(
+             'UPDATE users SET name = $1, email = $2, updated_at = NOW() WHERE id = $3 RETURNING *',
+             [name, email, user.id]
+           );
+           user = updateResult.rows[0];
+           console.log('User updated:', user);
+        }
+      }
+
+      // Pass the user object from *your database* to Passport
+      return done(null, user);
+
+    } catch (err) {
+      console.error('Error during database user lookup/creation:', err);
+      return done(err, null);
+    }
   }
 ));
 
 passport.serializeUser((user, done) => {
   // Use user.sub as the unique identifier
-  done(null, user.sub); 
+  done(null, user.id); 
 });
-passport.deserializeUser((sub, done) => {
-  // Pass the user object back. In the future you'll find the user by their 'sub' in the database.
-  done(null, { sub: sub });
+passport.deserializeUser(async (id, done) => {
+  try {
+    const userResult = await db.query('SELECT * FROM users WHERE id = $1', [id]);
+    const user = userResult.rows[0];
+    done(null, user || false); // Pass false or null if user not found
+  } catch (err) {
+    done(err, null);
+  }
 });
 
 // --- 4. ROUTES ---

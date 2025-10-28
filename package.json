@@ -18,6 +18,7 @@
     "mongoose": "^8.18.3",
     "passport": "^0.7.0",
     "passport-azure-ad": "^4.3.5",
+    "pg": "^8.16.3",
     "session": "^0.1.0"
   }
 }
