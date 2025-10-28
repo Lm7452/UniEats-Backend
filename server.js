@@ -125,6 +125,15 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
+
+function ensureAuthenticated(req, res, next) {
+  if (req.isAuthenticated()) {
+    return next();
+  }
+  // If not authenticated, send an unauthorized status
+  res.status(401).json({ error: 'User not authenticated' });
+}
+
 // --- 4. ROUTES ---
 // This route starts the login process
 app.get('/login',
@@ -151,13 +160,22 @@ app.get('/logout', (req, res, next) => {
   });
 });
 
-// A simple protected route to test if the user is logged in
-app.get('/profile', (req, res) => {
-    if (req.isAuthenticated()) { // isAuthenticated() is a Passport function
-        res.send(`<h1>Hello!</h1><p>You are logged in.</p><a href="/logout">Logout</a>`);
-    } else {
-        res.redirect('/login-failed');
-    }
+app.get('/api/profile', ensureAuthenticated, (req, res) => {
+  // req.user is populated by passport.deserializeUser
+  // We only send back necessary, non-sensitive info
+  if (req.user) {
+    res.json({
+      id: req.user.id,
+      name: req.user.name,
+      email: req.user.email,
+      role: req.user.role,
+      // Note: We don't have a profile picture URL stored yet
+    });
+  } else {
+    // This case should ideally be caught by ensureAuthenticated,
+    // but added as a fallback.
+    res.status(404).json({ error: 'User not found in session' });
+  }
 });
 
 // A route to handle login failures
