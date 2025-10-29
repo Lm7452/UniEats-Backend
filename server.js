@@ -1,4 +1,4 @@
-// server.js (Complete Version for Debugging)
+// server.js (Complete Version with Cross-Origin Auth Fix)
 
 const express = require('express');
 const dotenv = require('dotenv');
@@ -7,38 +7,40 @@ const session = require('express-session');
 const bodyParser = require('body-parser');
 const OIDCStrategy = require('passport-azure-ad').OIDCStrategy;
 const cors = require('cors');
-const db = require('./db'); // Add this line
+const db = require('./db');
 
 // --- 1. INITIAL SETUP ---
-// Load environment variables from .env file FIRST
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-
 // --- 2. MIDDLEWARE SETUP ---
-// Body parser middleware to handle form submissions
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Session middleware - required for Passport to maintain a login session
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'a-default-secret-for-dev', // Best practice: use an environment variable
-  resave: false,
-  saveUninitialized: true,
-}));
-
-// Initialize Passport and have it use the session
-app.use(passport.initialize());
-app.use(passport.session());
+// CORS - Allow requests from frontend
 app.use(cors({
     origin: process.env.FRONTEND_URL,
     credentials: true
 }));
 
+// Session middleware
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'a-default-secret-for-dev',
+  resave: false,
+  saveUninitialized: true,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+  }
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
 
 // --- 3. PASSPORT STRATEGY CONFIGURATION ---
-// Create a config object first for easy logging
 const oidcConfig = {
     identityMetadata: `https://login.microsoftonline.com/${process.env.TENANT_ID}/v2.0/.well-known/openid-configuration`,
     clientID: process.env.CLIENT_ID,
@@ -46,25 +48,20 @@ const oidcConfig = {
     responseType: 'code id_token',
     responseMode: 'form_post',
     redirectUrl: process.env.REDIRECT_URL || 'http://localhost:5000/auth/openid/return',
-    allowHttpForRedirectUrl: true, // Necessary for local testing on http
-
+    allowHttpForRedirectUrl: true,
     scope: ['profile', 'email'],
-    
     passReqToCallback: false
 };
 
-// DEBUG LOG: Print the configuration being used
 console.log('--- Initializing Passport with this OIDC Config ---');
 console.log(oidcConfig);
 
-// Define the OIDC strategy
 passport.use(new OIDCStrategy(oidcConfig,
-  async (iss, sub, profile, done) => { // Make the function async
+  async (iss, sub, profile, done) => {
     console.log('--- OIDC CALLBACK TRIGGERED ---');
     console.log('Authentication with Microsoft was successful.');
-    // Use profile.oid as the unique identifier from Azure AD
+    
     const azureOid = profile.oid;
-    // Extract email and name - adjust property names based on your actual profile object logging
     const email = profile.upn || profile._json?.email || profile.emails?.[0]?.value;
     const name = profile.displayName || 'UniEats User';
 
@@ -74,12 +71,10 @@ passport.use(new OIDCStrategy(oidcConfig,
     }
 
     try {
-      // Check if user exists
       let userResult = await db.query('SELECT * FROM users WHERE azure_oid = $1', [azureOid]);
       let user = userResult.rows[0];
 
       if (!user) {
-        // User not found, create a new one
         console.log(`User not found with OID ${azureOid}, creating new user...`);
         const insertResult = await db.query(
           'INSERT INTO users (azure_oid, email, name) VALUES ($1, $2, $3) RETURNING *',
@@ -89,7 +84,6 @@ passport.use(new OIDCStrategy(oidcConfig,
         console.log('New user created:', user);
       } else {
         console.log('Existing user found:', user);
-        // Optional: Update user info if it changed in Azure AD (e.g., name)
         if (user.name !== name || user.email !== email) {
            console.log('Updating user information...');
            const updateResult = await db.query(
@@ -101,7 +95,6 @@ passport.use(new OIDCStrategy(oidcConfig,
         }
       }
 
-      // Pass the user object from *your database* to Passport
       return done(null, user);
 
     } catch (err) {
@@ -112,69 +105,105 @@ passport.use(new OIDCStrategy(oidcConfig,
 ));
 
 passport.serializeUser((user, done) => {
-  // Use user.sub as the unique identifier
   done(null, user.id); 
 });
+
 passport.deserializeUser(async (id, done) => {
   try {
     const userResult = await db.query('SELECT * FROM users WHERE id = $1', [id]);
     const user = userResult.rows[0];
-    done(null, user || false); // Pass false or null if user not found
+    done(null, user || false);
   } catch (err) {
     done(err, null);
   }
 });
 
 // --- 4. ROUTES ---
-// This route starts the login process
+
+// Login route
 app.get('/login',
   passport.authenticate('azuread-openidconnect', { failureRedirect: '/login-failed' })
 );
 
-// This is the "Redirect URI" you configured in Azure. Microsoft sends the user back here after they log in.
+// OAuth callback - After successful auth, redirect to frontend with session ID
 app.post('/auth/openid/return',
   passport.authenticate('azuread-openidconnect', { failureRedirect: '/login-failed' }),
   (req, res) => {
-    console.log(`--- SUCCESS! Redirecting to: ${process.env.FRONTEND_URL}/dashboard ---`);
-    // Authentication was successful. Redirect to the FRONTEND dashboard.
-    res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
+    console.log('--- SUCCESS! User authenticated ---');
+    console.log('Session ID:', req.sessionID);
+    console.log('User:', req.user);
+    
+    // Redirect to frontend with session ID as query parameter
+    res.redirect(`${process.env.FRONTEND_URL}/dashboard?session=${req.sessionID}`);
   }
 );
 
-// This route ends the login session
+// API endpoint to get user data by session ID
+app.get('/api/user', (req, res) => {
+  console.log('--- /api/user endpoint hit ---');
+  console.log('Is authenticated:', req.isAuthenticated());
+  console.log('Session ID:', req.sessionID);
+  console.log('User:', req.user);
+  
+  if (req.isAuthenticated()) {
+    res.json({
+      success: true,
+      user: {
+        id: req.user.id,
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role
+      }
+    });
+  } else {
+    console.log('User not authenticated');
+    res.status(401).json({
+      success: false,
+      message: 'Not authenticated'
+    });
+  }
+});
+
+// Logout route
 app.get('/logout', (req, res, next) => {
   req.logout(function(err) {
     if (err) { return next(err); }
     req.session.destroy(() => {
-    res.redirect(process.env.FRONTEND_URL);
+      res.redirect(process.env.FRONTEND_URL);
     });
   });
 });
 
-// A simple protected route to test if the user is logged in
+// Profile test route
 app.get('/profile', (req, res) => {
-    if (req.isAuthenticated()) { // isAuthenticated() is a Passport function
-        res.send(`<h1>Hello!</h1><p>You are logged in.</p><a href="/logout">Logout</a>`);
+    if (req.isAuthenticated()) {
+        res.send(`<h1>Hello, ${req.user.name}!</h1><p>You are logged in.</p><a href="/logout">Logout</a>`);
     } else {
         res.redirect('/login-failed');
     }
 });
 
-// A route to handle login failures
+// Login failed route
 app.get('/login-failed', (req, res) => {
   res.status(401).send('<h1>Login Failed</h1><p>There was an error authenticating. Please check your terminal logs and Azure configuration.</p><a href="/">Home</a>');
 });
 
-// The root route with a login link
+// Root route
 app.get('/', (req, res) => {
   res.send('<h1>Welcome to UniEats</h1><a href="/login">Login with Princeton</a>');
 });
 
-
-// --- 5. SERVER START ---
-// Start the server
-app.listen(PORT, () => {
-  console.log(`Server is listening on port ${PORT}`);
-
+// Test session endpoint
+app.get('/test-session', (req, res) => {
+  res.json({
+    isAuthenticated: req.isAuthenticated(),
+    sessionID: req.sessionID,
+    user: req.user,
+    cookies: req.headers.cookie
+  });
 });
 
+// --- 5. SERVER START ---
+app.listen(PORT, () => {
+  console.log(`Server is listening on port ${PORT}`);
+});
